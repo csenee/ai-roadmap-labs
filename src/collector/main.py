@@ -3,20 +3,44 @@ import requests
 import json
 import os
 import sys
+import logging
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
+LOG_DIR = os.path.join(ROOT_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 
 base_url = "https://pokeapi.co/api/v2/"
+
+file_handler = logging.FileHandler(os.path.join(LOG_DIR, "app.log"))
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s  %(levelname)s  %(message)s")
+)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)s  %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+logger.addHandler(file_handler)
+
 
 def ensure_data_dir():
     os.makedirs(DATA_DIR, exist_ok=True)
 
 def get_pokemon_info(name):
     url = f"{base_url}/pokemon/{name}"
-    response = requests.get(url)
-    response.raise_for_status()
-    return response.json()
+    logger.info("Requesting %s", url)
+    response = requests.get(url, timeout=10)
+    if response.status_code == 404 or response.status_code == 500:
+        logger.error("Pokemon doesnt exist or API is down")
+        return None
+    elif response.status_code == 200:
+        return response.json()
+    else: 
+        logger.error("Request failed %s", response.status_code)
+        return None
     
 def save_json(data):
     ensure_data_dir()
@@ -24,9 +48,12 @@ def save_json(data):
     path = os.path.join(DATA_DIR, filename)
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+        logger.info("Saved -> %s", path)
 
 def main():
     pokemon_name = sys.argv[1] if len(sys.argv) > 1 else "charizard"
+    pokemon_name = pokemon_name.lower()
+    logger.info("Fetching pokemon: %s", pokemon_name)
     pokemon_info = get_pokemon_info(pokemon_name)
 
     if pokemon_info:
@@ -34,6 +61,7 @@ def main():
         print(f"Height: {pokemon_info["height"]}")
         print(f"Weight: {pokemon_info["weight"]}")
         save_json(pokemon_info)
+        logger.info("Done")
 
 if __name__ == "__main__":
     main()
